@@ -1,168 +1,699 @@
-// Este script envia as respostas da planilha para o banco de dados Firebase.
-const SPREADSHEET_ID = '1Nunvkk9yXEW7wGwzfJctoVEefiEUUZo26PmOHSsxEEM';
-const PROJECT_ID = "painel-feedbacks"; // O ID do seu projeto no Firebase
-const API_KEY = "AIzaSyBAJH6JsVm0UHgUCPwpxGI6c67TsOKEoSM"; // Chave de segurança para permitir a gravação
-
-// ============================================================================
-// 1. FUNÇÃO AUTOMÁTICA: Roda sozinha toda vez que um formulário novo é enviado
-// ============================================================================
-function enviarParaFirebase(e) {
-  if (!e || !e.values) return;
-
-  var url = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents/feedbacks?key=" + API_KEY;
-
-  var payload = {
-    "fields": {
-      "dataHora": { "stringValue": String(e.values[0] || new Date().toISOString()) },
-      "divisao": { "stringValue": String(e.values[1] || "").trim() },
-      "responsavel": { "stringValue": String(e.values[2] || "").trim() },
-      "solicitante": { "stringValue": String(e.values[3] || "").trim() },
-      "membro": { "stringValue": String(e.values[4] || "").trim() },
-      "linkDoc": { "stringValue": String(e.values[5] || "").trim() }
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Painel Global de Feedbacks - DIC</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #0a0101;
+      --bg-panel: #140202;
+      --wine-neon: #ff2a2a;
+      --wine-glow: rgba(255, 42, 42, 0.4);
+      --wine-dark: #4a0000;
+      --admin-neon: #ffcc00;
+      --admin-glow: rgba(255, 204, 0, 0.4);
+      --admin-panel: #1a1a00;
+      --dynamic-neon: var(--wine-neon);
+      --dynamic-glow: var(--wine-glow);
+      --dynamic-panel: var(--bg-panel);
+      --dynamic-select-text: #fff;
+      --text-main: #f4f4f4;
+      --text-sub: #b38b8b;
+      --font-ui: 'Rajdhani', sans-serif;
+      --border-tech: 1px solid rgba(255, 42, 42, 0.3);
     }
-  };
 
-  var options = {
-    "method": "post",
-    "contentType": "application/json",
-    "payload": JSON.stringify(payload),
-    "muteHttpExceptions": true
-  };
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  try {
-    UrlFetchApp.fetch(url, options);
-  } catch(err) {
-    console.log("Erro ao enviar pro Firebase: " + err);
-  }
-}
+    body { font-family: var(--font-ui); background-color: var(--bg-deep); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; transition: background-image 0.4s; }
+    body::before { content: ''; position: fixed; top: 50%; left: 50%; width: 150vw; height: 150vh; transform: translate(-50%, -50%); background: radial-gradient(circle at center, rgba(255, 42, 42, 0.05) 0%, transparent 60%); pointer-events: none; z-index: -1; }
 
-// ============================================================================
-// 2. FUNÇÃO DE IMPORTAÇÃO DOS FEEDBACKS (JÁ EXECUTADA)
-// ============================================================================
-function importarTudoProFirebase() {
-  try {
-    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName("Respostas ao formulário 1");
-    if (!sheet) { console.log("Aba de respostas não encontrada."); return; }
+    /* Tela de Login */
+    #loginScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-deep); z-index: 99999; display: flex; align-items: center; justify-content: center; flex-direction: column; transition: opacity 0.5s; }
+    .login-card { background: var(--bg-panel); border: 1px solid var(--wine-neon); padding: 50px 40px; border-radius: 12px; text-align: center; box-shadow: 0 0 40px var(--wine-glow); max-width: 400px; width: 90%; }
+    .login-card img { width: 90px; filter: drop-shadow(0 0 10px var(--wine-neon)); margin-bottom: 25px; }
+    .login-card h2 { color: #fff; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; font-size: 24px; }
+    .login-card p { color: var(--text-sub); margin-bottom: 35px; font-size: 15px; font-weight: 500; }
+
+    #badgeBackdrop { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(1.3); width: 80vw; height: 80vw; opacity: 0.2; filter: blur(12px); object-fit: contain; z-index: -2; display: none; transition: opacity 0.4s; }
+
+    /* Controles Superiores (Admin & Logout) */
+    .top-controls { position: absolute; right: 30px; top: 30px; display: flex; gap: 15px; z-index: 100; }
+    .btn-top { background: transparent; border: none; font-size: 24px; cursor: pointer; transition: all 0.3s; filter: drop-shadow(0 0 5px var(--wine-neon)); }
+    #btnToggleAdmin { color: var(--wine-neon); display: none; }
+    #btnToggleAdmin:hover { transform: scale(1.1); color: var(--admin-neon); filter: drop-shadow(0 0 10px var(--admin-glow)); }
+    #btnLogout { color: var(--text-sub); }
+    #btnLogout:hover { transform: scale(1.1); color: #fff; filter: drop-shadow(0 0 10px #fff); }
+
+    header { padding: 30px 20px; display: flex; justify-content: center; position: relative; z-index: 10; }
+    .header-frame { background: rgba(10, 1, 1, 0.85); backdrop-filter: blur(10px); border: var(--border-tech); border-radius: 8px; padding: 15px 40px; display: flex; align-items: center; gap: 25px; box-shadow: 0 0 20px rgba(255, 42, 42, 0.15), inset 0 0 10px rgba(255, 42, 42, 0.05); position: relative; transition: all 0.4s; }
+    .header-frame::before { content: ''; position: absolute; top: -1px; left: 10%; width: 80%; height: 2px; background: linear-gradient(90deg, transparent, var(--dynamic-neon), transparent); }
+    .logo-dic { width: 65px; filter: drop-shadow(0 0 8px var(--dynamic-neon)); transition: all 0.4s;}
+    .title-area { display: flex; flex-direction: column; justify-content: center; }
+    .title-area h1 { font-size: 28px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #fff; text-shadow: 0 0 10px var(--dynamic-glow); margin-bottom: -5px; }
+    .title-area h2 { font-size: 14px; font-weight: 500; color: var(--dynamic-neon); text-transform: uppercase; letter-spacing: 3px; }
+
+    .container { flex: 1; max-width: 1300px; margin: 20px auto 50px auto; padding: 0 20px; width: 100%; }
+    #adminContainer { display: none; } 
+    #appWrapper { display: none; flex-direction: column; flex: 1; }
+
+    .control-panel { background: var(--dynamic-panel); backdrop-filter: blur(15px); border: 1px solid rgba(255, 42, 42, 0.1); border-radius: 8px; padding: 15px 25px; display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: all 0.4s; }
+    .control-panel:hover { border-color: var(--dynamic-neon); box-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 0 20px var(--dynamic-glow); }
+    .control-group { display: flex; align-items: center; gap: 15px; flex: 1; }
+    .input-block { position: relative; flex: 1; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,42,42,0.05); border-radius: 6px; display: flex; align-items: center; padding: 0 15px; transition: all 0.3s; }
+    .input-block:focus-within { border-color: var(--dynamic-neon); box-shadow: 0 0 12px var(--dynamic-glow); }
+    .input-block i { color: var(--dynamic-neon); font-size: 16px; }
+    #searchBlock { display: none; }
+    select, input[type="text"] { width: 100%; background: transparent; border: none; color: var(--text-main); font-size: 16px; font-family: var(--font-ui); font-weight: 500; padding: 15px 10px; outline: none; appearance: none; letter-spacing: 1px; }
+    select { cursor: pointer; color: var(--dynamic-select-text); text-transform: uppercase; }
+    select option { background: var(--bg-panel); color: #fff; }
+
+    .division-badge-slot { width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle, rgba(255,42,42,0.1) 0%, transparent 70%); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(255,42,42,0.05); opacity: 0; transition: opacity 0.4s; }
+    .division-badge-slot.visible { opacity: 1; animation: slide-in-right 0.6s cubic-bezier(0.23, 1, 0.32, 1); }
+    .division-badge-slot img { max-width: 100%; max-height: 100%; filter: drop-shadow(0 0 8px rgba(255,255,255,0.8)); }
+
+    #globalLoader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 0; color: var(--dynamic-neon); font-size: 18px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase; }
+    .spinner-ring { width: 50px; height: 50px; border: 3px solid rgba(255, 42, 42, 0.1); border-top-color: var(--dynamic-neon); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+
+    .feedbacks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 25px; opacity: 0; transform: translateY(15px); transition: opacity 0.4s, transform 0.4s; }
+    .feedbacks-grid.visible { opacity: 1; transform: translateY(0); }
+
+    .tech-card { background: linear-gradient(135deg, rgba(20,2,2,0.9) 0%, rgba(10,1,1,0.95) 100%); border: 1px solid rgba(255, 42, 42, 0.15); border-radius: 12px; padding: 25px; position: relative; display: flex; flex-direction: column; gap: 20px; transition: border-color 0.3s ease, box-shadow 0.3s ease; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+    .tech-card:hover { border-color: var(--dynamic-neon); box-shadow: 0 15px 35px rgba(0,0,0,0.6), 0 0 20px var(--dynamic-glow); }
+    .card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 42, 42, 0.1); padding-bottom: 10px; }
+    .sys-time { font-size: 14px; color: var(--text-sub); font-weight: 500; display: flex; align-items: center; gap: 8px; }
+    .sys-time i { color: var(--dynamic-neon); }
+
+    .subject-flow { display: flex; align-items: flex-start; justify-content: space-between; background: rgba(255, 42, 42, 0.03); border: 1px solid rgba(255, 42, 42, 0.05); border-radius: 8px; padding: 15px; }
+    .subject { display: flex; flex-direction: column; align-items: center; text-align: center; flex: 1; gap: 8px; }
+    .subject-role { font-size: 11px; text-transform: uppercase; color: var(--text-sub); letter-spacing: 1px; font-weight: 600; height: 28px; display: flex; align-items: flex-end; justify-content: center; }
+    .subject-img-ring { width: 55px; height: 55px; border-radius: 50%; border: 2px dashed rgba(255, 42, 42, 0.3); display: flex; align-items: center; justify-content: center; position: relative; transition: border-color 0.3s; }
+    .tech-card:hover .subject-img-ring { border-color: var(--dynamic-neon); }
+    .subject-img-inner { width: 45px; height: 45px; border-radius: 50%; background: #000; overflow: hidden; position: relative;  }
+    .subject-img-inner img { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); object-fit: none; }
+    .subject-nick { font-size: 14px; font-weight: 600; color: #fff; text-decoration: none; letter-spacing: 0.5px; transition: color 0.2s, text-shadow 0.2s; width: 100%; text-align: center; margin-top: 2px; }
+    .subject-nick:hover { color: var(--dynamic-neon); text-shadow: 0 0 8px var(--dynamic-glow); }
+    .flow-divider { color: rgba(255, 42, 42, 0.2); font-size: 14px; align-self: flex-start; margin-top: 56px; }
+
+    .btn-tech { background: rgba(255, 42, 42, 0.05); border: 1px solid var(--wine-neon); border-color: rgba(255,42,42,0.5); color: var(--text-main); padding: 12px; border-radius: 6px; font-family: var(--font-ui); font-size: 15px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.3s; }
+    .btn-tech:hover { background: var(--dynamic-neon); border-color: var(--dynamic-neon); color: #fff; box-shadow: 0 0 15px var(--dynamic-glow); }
+
+    .modal { display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); backdrop-filter: blur(8px); align-items: center; justify-content: center; padding: 20px; }
+    .modal-content { background-color: var(--bg-panel); border: 1px solid var(--dynamic-neon); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; position: relative; overflow: hidden; box-shadow: 0 0 40px var(--dynamic-glow); }
+    .close-btn { position: absolute; right: 20px; top: 15px; width: 40px; height: 40px; background: rgba(255,42,42,0.1); border-radius: 50%; color: var(--dynamic-neon); font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; transition: all 0.3s; }
+    .close-btn:hover { background: var(--dynamic-neon); color: #fff; transform: rotate(90deg); }
+    iframe { width: 100%; height: 100%; border: none; background: #fff; border-radius: 12px;}
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-sub); font-size: 16px; font-weight: 500; grid-column: 1 / -1; letter-spacing: 1px; }
+    .empty-state i { font-size: 35px; margin-bottom: 15px; color: rgba(255,42,42,0.2); }
+
+    footer { text-align: center; padding: 25px; font-size: 14px; color: #888; font-weight: 500; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.02); letter-spacing: 1px; }
+
+    .toast-container { position: fixed; top: 30px; right: 30px; z-index: 10000; display: flex; flex-direction: column; gap: 15px; pointer-events: none; }
+    .toast-msg { background: rgba(20, 2, 2, 0.95); backdrop-filter: blur(10px); border: 1px solid var(--wine-neon); border-radius: 8px; padding: 15px 20px; display: flex; align-items: center; gap: 15px; box-shadow: 0 0 20px rgba(255, 42, 42, 0.3); color: #fff; font-family: var(--font-ui); font-size: 16px; font-weight: 600; animation: slide-in-right 0.5s cubic-bezier(0.23, 1, 0.32, 1) forwards, smoke-fade-out 2s ease-in forwards 5s; }
+    .toast-msg img { width: 40px; height: 40px; filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)); }
+
+    /* ESTILOS DASHBOARD ADMIN */
+    .admin-section { background: var(--admin-panel); border: 1px solid var(--admin-neon); border-radius: 12px; padding: 25px; margin-bottom: 30px; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+    .admin-section h3 { color: var(--admin-neon); font-size: 20px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; border-bottom: 1px solid rgba(255,204,0,0.2); padding-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+    .admin-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .admin-table th { color: #fff; background: rgba(255,204,0,0.1); padding: 12px; text-align: left; font-weight: 600; border: 1px solid rgba(255,204,0,0.2); }
+    .admin-table td { padding: 10px; border: 1px solid rgba(255,204,0,0.1); background: rgba(0,0,0,0.3); }
+    .admin-input { width: 100%; background: transparent; border: none; color: #fff; font-family: var(--font-ui); font-size: 15px; outline: none; }
+    .admin-input:focus { color: var(--admin-neon); }
+    .admin-input[readonly] { opacity: 0.6; cursor: default; }
+    .color-picker-wrapper { display: flex; align-items: center; gap: 8px; }
+    .color-picker { width: 30px; height: 30px; padding: 0; border: none; background: transparent; cursor: pointer; border-radius: 4px; overflow: hidden; }
+    .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+    .color-picker::-webkit-color-swatch { border: 1px solid rgba(255,204,0,0.5); border-radius: 4px; }
+    .color-picker[disabled] { cursor: default; opacity: 0.6; filter: grayscale(50%); pointer-events: none; }
     
-    var data = sheet.getDataRange().getValues();
-    var url = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents/feedbacks?key=" + API_KEY;
-    var enviados = 0;
+    .btn-admin { background: rgba(255,204,0,0.1); border: 1px solid var(--admin-neon); color: var(--admin-neon); padding: 8px 15px; border-radius: 4px; cursor: pointer; font-family: var(--font-ui); font-weight: 600; text-transform: uppercase; transition: all 0.3s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+    .btn-admin:hover { background: var(--admin-neon); color: #000; }
+    .btn-admin-del { border-color: #ff2a2a; color: #ff2a2a; background: rgba(255,42,42,0.1); }
+    .btn-admin-del:hover { background: #ff2a2a; color: #fff; }
+    .btn-admin-check { border-color: #4caf50 !important; color: #4caf50 !important; background: rgba(76,175,80,0.1) !important; }
+    .btn-admin-check:hover { background: #4caf50 !important; color: #fff !important; }
 
-    for (var i = 1; i < data.length; i++) {
-      var row = data[i];
-      if (!row[1] || String(row[1]).trim() === "") continue;
+    @keyframes smoke-fade-out { 0% { transform: translateY(0) scale(1); opacity: 1; filter: blur(0px); } 100% { transform: translateY(-40px) scale(1.1); opacity: 0; filter: blur(5px); } }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes slide-in-right { 0% { transform: translateX(50px); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
 
-      var payload = {
-        "fields": {
-          "dataHora": { "stringValue": String(row[0] || "") },
-          "divisao": { "stringValue": String(row[1] || "").trim() },
-          "responsavel": { "stringValue": String(row[2] || "").trim() },
-          "solicitante": { "stringValue": String(row[3] || "").trim() },
-          "membro": { "stringValue": String(row[4] || "").trim() },
-          "linkDoc": { "stringValue": String(row[5] || "").trim() }
-        }
-      };
-
-      var options = {
-        "method": "post",
-        "contentType": "application/json",
-        "payload": JSON.stringify(payload),
-        "muteHttpExceptions": true
-      };
-
-      UrlFetchApp.fetch(url, options);
-      enviados++;
-      Utilities.sleep(150); 
+    @media (max-width: 850px) {
+      .header-frame { flex-direction: column; text-align: center; padding-top: 30px;}
+      .top-controls { top: 10px; right: 20px; }
+      .control-panel { flex-direction: column; }
+      .control-group { width: 100%; flex-direction: column; }
+      .subject-flow { gap: 10px; }
+      .flow-divider { display: none; }
+      .admin-table { display: block; overflow-x: auto; }
     }
-    console.log("Importação concluída! " + enviados + " feedbacks enviados.");
-  } catch(e) { console.log("Erro: " + e.message); }
-}
+  </style>
+</head>
+<body>
 
-// ============================================================================
-// 3. FUNÇÃO DE IMPORTAÇÃO: ABAS 'DIVISOES' E 'ACESSOS'
-// ============================================================================
-function importarAbasExtras() {
-  try {
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  <div id="loginScreen">
+    <div class="login-card">
+      <img src="https://i.imgur.com/Rh7uF6e.png" alt="Logo DIC">
+      <h2>Painel Global</h2>
+      <p>Acesso restrito ao Departamento de Investigação Criminal</p>
+      <button onclick="loginGoogle()" class="btn-tech" style="width:100%; font-size:16px;">
+        <i class="fab fa-google"></i> Entrar com o Google
+      </button>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+  <img id="badgeBackdrop" src="" alt="Projeção Holográfica">
+
+  <div id="appWrapper">
     
-    // --- 3.1. IMPORTAR DIVISÕES ---
-    var abaDivisoes = ss.getSheetByName("Divisoes");
-    if (abaDivisoes) {
-      var dataDiv = abaDivisoes.getDataRange().getValues();
-      var divEnviadas = 0;
+    <div class="top-controls">
+      <button id="btnToggleAdmin" class="btn-top" onclick="alternarDashboard()" title="Painel de Controle">
+        <i class="fas fa-crown"></i>
+      </button>
+      <button id="btnLogout" class="btn-top" onclick="logoutGoogle()" title="Sair da Conta">
+        <i class="fas fa-sign-out-alt"></i>
+      </button>
+    </div>
+
+    <header>
+      <div class="header-frame" id="headerFrame">
+        <img src="https://i.imgur.com/Rh7uF6e.png" id="mainLogo" alt="Logo" class="logo-dic">
+        <div class="title-area">
+          <h1 id="mainTitle">Painel Global de Feedbacks</h1>
+          <h2 id="mainSubtitle">Departamento de Investigação Criminal</h2>
+        </div>
+      </div>
+    </header>
+
+    <div class="container" id="feedbacksContainerWrapper">
+      <div class="control-panel">
+        <div class="control-group">
+          <div class="input-block">
+            <i class="fas fa-layer-group"></i>
+            <select id="divisaoSelect" onchange="processarFiltros()">
+              <option value="" disabled selected>Selecione a Divisão...</option>
+            </select>
+          </div>
+          <div class="input-block" id="searchBlock">
+            <i class="fas fa-search"></i>
+            <input type="text" id="searchInput" placeholder="Buscar pelo nick do solicitante..." onkeyup="processarFiltros()">
+          </div>
+        </div>
+        <div id="divisionBadgeSlot" class="division-badge-slot">
+          <img id="badgeHero" src="" alt="Emblema da Divisão">
+        </div>
+      </div>
       
-      for (var i = 1; i < dataDiv.length; i++) {
-        var rowDiv = dataDiv[i];
-        var nome = String(rowDiv[0] || "").trim();
-        if (nome === "") continue;
+      <div id="globalLoader">
+        <div class="spinner-ring"></div>
+        <div id="loaderText">Sincronizando Banco de Dados...</div>
+      </div>
 
-        var urlDiv = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents/divisoes/" + encodeURIComponent(nome) + "?key=" + API_KEY;
-        
-        var payloadDiv = {
-          "fields": {
-            "nome": { "stringValue": nome },
-            "emblema": { "stringValue": String(rowDiv[1] || "").trim() },
-            "neon": { "stringValue": String(rowDiv[2] || "#ffffff").trim() },
-            "glow": { "stringValue": String(rowDiv[3] || "rgba(255,255,255,0.3)").trim() },
-            "panel": { "stringValue": String(rowDiv[4] || "#111111").trim() },
-            "text": { "stringValue": String(rowDiv[5] || "#ffffff").trim() },
-            "ordem": { "integerValue": String(i) } // ADICIONADO: Salva a ordem da linha
-          }
-        };
+      <div id="feedbacksContainer" class="feedbacks-grid visible"></div>
+    </div>
 
-        var optionsDiv = {
-          "method": "patch", 
-          "contentType": "application/json",
-          "payload": JSON.stringify(payloadDiv),
-          "muteHttpExceptions": true
-        };
+    <div class="container" id="adminContainer">
+      <div class="admin-section">
+        <h3><i class="fas fa-users-cog"></i> Gerenciar Acessos</h3>
+        <table class="admin-table" id="tbAcessos">
+          <thead>
+            <tr>
+              <th style="width:65%">E-mail Google</th>
+              <th style="width:20%">Nível (ADMIN / COMUM)</th>
+              <th style="width:15%">Ações</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div style="display:flex; gap:15px; margin-top: 15px;">
+          <button class="btn-admin" onclick="addLinhaAcesso()"><i class="fas fa-plus"></i> Novo Acesso</button>
+          <button class="btn-admin" onclick="salvarAcessos()" style="background:var(--admin-neon); color:#000;"><i class="fas fa-save"></i> Salvar Acessos</button>
+        </div>
+      </div>
 
-        UrlFetchApp.fetch(urlDiv, optionsDiv);
-        divEnviadas++;
-        Utilities.sleep(150);
+      <div class="admin-section">
+        <h3><i class="fas fa-shield-alt"></i> Gerenciar Divisões e Cores</h3>
+        <table class="admin-table" id="tbDivisoes">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Link Emblema (.gif/.png)</th>
+              <th>Neon (Hex)</th>
+              <th>Glow (Rgba)</th>
+              <th>Painel (Hex)</th>
+              <th>Texto (Hex)</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div style="display:flex; gap:15px; margin-top: 15px;">
+          <button class="btn-admin" onclick="addLinhaDivisao()"><i class="fas fa-plus"></i> Nova Divisão</button>
+          <button class="btn-admin" onclick="salvarDivisoes()" style="background:var(--admin-neon); color:#000;"><i class="fas fa-save"></i> Salvar Divisões</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="docModal" class="modal">
+    <div class="modal-content">
+      <div class="close-btn" onclick="fecharModal()"><i class="fas fa-times"></i></div>
+      <iframe id="docIframe" src=""></iframe>
+    </div>
+  </div>
+
+  <footer>
+    Desenvolvido com <i class="fa-solid fa-heart" style="color: #808080;"></i> por MegaMetall
+  </footer>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
+    import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, onSnapshot, writeBatch, query, orderBy } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
+
+    // Sua Configuração
+    const firebaseConfig = {
+      apiKey: "AIzaSyBAJH6JsVm0UHgUCPwpxGI6c67TsOKEoSM",
+      authDomain: "painel-feedbacks.firebaseapp.com",
+      projectId: "painel-feedbacks",
+      storageBucket: "painel-feedbacks.firebasestorage.app",
+      messagingSenderId: "380522384180",
+      appId: "1:380522384180:web:1bdec782afaf1952b9b361"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Variáveis Globais
+    window.bancoDeDadosLocal = []; 
+    window.acessosData = [];
+    window.divisoesDataArray = [];
+    window.sistemaPronto = false;
+    window.viewAtual = 'PAINEL'; 
+    window.divisoesData = {};
+    window.divisaoTemasData = {};
+
+    // Sistema de Login
+    window.loginGoogle = function() {
+      const provider = new GoogleAuthProvider();
+      signInWithPopup(auth, provider).catch(e => alert("Erro ao fazer login: " + e.message));
+    };
+
+    window.logoutGoogle = function() {
+      signOut(auth).then(() => { window.location.reload(); });
+    };
+
+    // Observador de Estado (O que acontece quando entra)
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        document.getElementById('loginScreen').style.opacity = '0';
+        setTimeout(() => { document.getElementById('loginScreen').style.display = 'none'; }, 500);
+        document.getElementById('appWrapper').style.display = 'flex';
+        await verificarAcesso(user);
+      } else {
+        document.getElementById('appWrapper').style.display = 'none';
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('loginScreen').style.opacity = '1';
       }
-      console.log("Foram importadas " + divEnviadas + " divisões com sucesso.");
-    } else {
-      console.log("Aba 'Divisoes' não encontrada.");
+    });
+
+    async function verificarAcesso(user) {
+      const emailLogado = user.email.toLowerCase();
+      const acessosRef = collection(db, "acessos");
+      const acessosSnap = await getDocs(acessosRef);
+      
+      // Auto-configuração no primeiro uso da vida
+      if (acessosSnap.empty) {
+        await setDoc(doc(acessosRef, emailLogado), { email: emailLogado, nivel: 'ADMIN' });
+        alert("Sistema Inicializado! Você foi registrado como o primeiro Administrador.");
+        window.location.reload();
+        return;
+      }
+
+      let autorizado = false;
+      let nivelUsuario = 'COMUM';
+      window.acessosData = [];
+
+      acessosSnap.forEach(d => {
+        let dados = d.data();
+        window.acessosData.push({ id: d.id, email: dados.email, nivel: dados.nivel });
+        if (dados.email === emailLogado) {
+          autorizado = true;
+          nivelUsuario = dados.nivel;
+        }
+      });
+
+      if (!autorizado) {
+        alert("ACESSO NEGADO: Seu e-mail (" + emailLogado + ") não tem permissão para visualizar os relatórios da DIC.");
+        window.logoutGoogle();
+        return;
+      }
+
+      if (nivelUsuario === 'ADMIN') {
+        document.getElementById('btnToggleAdmin').style.display = 'block';
+        window.renderTabelasAdmin();
+      }
+
+      await carregarDivisoes();
+      carregarFeedbacksRealtime();
     }
 
-    // --- 3.2. IMPORTAR ACESSOS ---
-    var abaAcessos = ss.getSheetByName("Acessos");
-    if (abaAcessos) {
-      var dataAc = abaAcessos.getDataRange().getValues();
-      var acEnviados = 0;
-
-      for (var j = 1; j < dataAc.length; j++) {
-        var rowAc = dataAc[j];
-        var email = String(rowAc[1] || "").trim().toLowerCase();
-        if (email === "") continue;
-
-        var urlAc = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents/acessos?key=" + API_KEY;
-        
-        var payloadAc = {
-          "fields": {
-            "email": { "stringValue": email },
-            "nivel": { "stringValue": String(rowAc[2] || "COMUM").trim().toUpperCase() }
-          }
-        };
-
-        var optionsAc = {
-          "method": "post",
-          "contentType": "application/json",
-          "payload": JSON.stringify(payloadAc),
-          "muteHttpExceptions": true
-        };
-
-        UrlFetchApp.fetch(urlAc, optionsAc);
-        acEnviados++;
-        Utilities.sleep(150);
+    async function carregarDivisoes() {
+      const divisoesRef = collection(db, "divisoes");
+      const q = query(divisoesRef, orderBy("ordem", "asc")); // ADICIONADO: Puxar as divisões ordenadas corretamente
+      const divSnap = await getDocs(q);
+      
+      // Auto-popular divisões padrão se estiver vazio
+      if(divSnap.empty) {
+        const batch = writeBatch(db);
+        const divPadrao = [
+          {nome:"Guias", emblema:"https://www.habbo.com.br/habbo-imaging/badge/b10114s12097s36094s43114s38014c77345b759d5130e77553959dfbd764d.gif", neon:"#e0e0e0", glow:"rgba(224,224,224,0.3)", panel:"#1a1a1a", text:"#ffffff", ordem: 1},
+          {nome:"Supervisores", emblema:"https://www.habbo.com.br/habbo-imaging/badge/b10134s12017s43014t12104s170129cb6c41f26a37e0c3192016b851550a7.gif", neon:"#ffeb3b", glow:"rgba(255,235,59,0.3)", panel:"#1a1a00", text:"#ffffff", ordem: 2}
+        ];
+        divPadrao.forEach(d => { batch.set(doc(divisoesRef, d.nome), d); });
+        await batch.commit();
+        window.location.reload();
+        return;
       }
-      console.log("Foram importados " + acEnviados + " e-mails de acesso com sucesso.");
-    } else {
-      console.log("Aba 'Acessos' não encontrada.");
+
+      window.divisoesDataArray = [];
+      divSnap.forEach(d => {
+        let val = d.data();
+        window.divisoesDataArray.push(val);
+        window.divisoesData[val.nome] = val.emblema;
+        window.divisaoTemasData[val.nome] = { neon: val.neon, glow: val.glow, panel: val.panel, text: val.text };
+      });
+      window.preencherSelect();
+      window.renderTabelasAdmin();
     }
 
-  } catch(e) {
-    console.log("Erro na importação das abas extras: " + e.message);
-  }
-}
+    // Leitura em Tempo Real Absoluto (Substitui o Poll de 20s)
+    function carregarFeedbacksRealtime() {
+      const feedbacksRef = collection(db, "feedbacks");
+      const q = query(feedbacksRef, orderBy("dataHora", "desc"));
+      
+      onSnapshot(q, (snapshot) => {
+        let novoTamanho = snapshot.size;
+        let tamanhoAntigo = window.bancoDeDadosLocal.length;
+        
+        window.bancoDeDadosLocal = [];
+        snapshot.forEach((doc) => { window.bancoDeDadosLocal.push(doc.data()); });
+
+        if (!window.sistemaPronto) {
+          window.sistemaPronto = true;
+          document.getElementById('globalLoader').style.display = 'none';
+          document.getElementById('feedbacksContainer').innerHTML = '<div class="empty-state"><i class="fas fa-shield-alt"></i><br>Sistema Sincronizado. Selecione uma divisão para iniciar.</div>';
+        } else if (novoTamanho > tamanhoAntigo && tamanhoAntigo !== 0) {
+          window.dispararNotificacaoFeedback(window.bancoDeDadosLocal[0].divisao);
+        }
+
+        if (document.getElementById('divisaoSelect').value && window.viewAtual === 'PAINEL') {
+          window.processarFiltros();
+        }
+      });
+    }
+
+    // ==========================================
+    // LÓGICA DO DASHBOARD ADMIN & FIREBASE SALVAR
+    // ==========================================
+    window.salvarAcessos = async function() {
+      var rows = document.querySelectorAll('#tbAcessos tbody tr');
+      const batch = writeBatch(db);
+      
+      window.acessosData.forEach(ac => { batch.delete(doc(db, "acessos", ac.id)); });
+
+      rows.forEach(r => {
+        var email = r.querySelector('.inp-email').value.trim().toLowerCase();
+        if(email) {
+          var ref = doc(collection(db, "acessos")); 
+          batch.set(ref, { email: email, nivel: r.querySelector('.inp-nivel').value.trim().toUpperCase() });
+        }
+      });
+
+      try {
+        await batch.commit();
+        window.mostrarToastAdmin("Acessos Salvos no Banco!");
+      } catch(e) { alert("Erro ao salvar: " + e.message); }
+    }
+
+    window.salvarDivisoes = async function() {
+      var rows = document.querySelectorAll('#tbDivisoes tbody tr');
+      const batch = writeBatch(db);
+
+      // Apaga antigas
+      window.divisoesDataArray.forEach(d => { batch.delete(doc(db, "divisoes", d.nome)); });
+
+      let indexOrdem = 1; // ADICIONADO: Mantém a ordem correta baseada em como está na tabela Admin
+      rows.forEach(r => {
+        var nome = r.querySelector('.inp-nome').value.trim();
+        if(nome) {
+          batch.set(doc(db, "divisoes", nome), {
+            nome: nome,
+            emblema: r.querySelector('.inp-emblema').value.trim(),
+            neon: r.querySelector('.inp-neon').value.trim(),
+            glow: r.querySelector('.inp-glow').value.trim(),
+            panel: r.querySelector('.inp-panel').value.trim(),
+            text: r.querySelector('.inp-text').value.trim(),
+            ordem: indexOrdem++ // ADICIONADO: Salva o index no Firebase
+          });
+        }
+      });
+
+      try {
+        await batch.commit();
+        alert("Divisões salvas com sucesso! A página será recarregada para aplicar as cores.");
+        window.location.reload();
+      } catch(e) { alert("Erro ao salvar: " + e.message); }
+    }
+
+    // ==========================================
+    // FUNÇÕES DE INTERFACE (UI) MANTIDAS
+    // ==========================================
+    window.alternarDashboard = function() {
+      var painel = document.getElementById('feedbacksContainerWrapper');
+      var admin = document.getElementById('adminContainer');
+      var logo = document.getElementById('mainLogo');
+      var title = document.getElementById('mainTitle');
+      var subtitle = document.getElementById('mainSubtitle');
+      var icon = document.querySelector('#btnToggleAdmin i');
+      var root = document.documentElement;
+
+      if (window.viewAtual === 'PAINEL') {
+        window.viewAtual = 'ADMIN';
+        painel.style.display = 'none';
+        admin.style.display = 'block';
+        icon.className = 'fas fa-arrow-left';
+        
+        logo.src = 'https://www.habbo.com.br/habbo-imaging/badge/b10134s12017s43014t12104s170129cb6c41f26a37e0c3192016b851550a7.gif';
+        title.innerText = 'Dashboard de Comando';
+        subtitle.innerText = 'Liderança dos Supervisores';
+        root.style.setProperty('--dynamic-neon', 'var(--admin-neon)');
+        root.style.setProperty('--dynamic-glow', 'var(--admin-glow)');
+      } else {
+        window.viewAtual = 'PAINEL';
+        painel.style.display = 'block';
+        admin.style.display = 'none';
+        icon.className = 'fas fa-crown';
+        
+        logo.src = 'https://i.imgur.com/Rh7uF6e.png';
+        title.innerText = 'Painel Global de Feedbacks';
+        subtitle.innerText = 'Departamento de Investigação Criminal';
+        window.processarFiltros(); 
+      }
+    }
+
+    window.renderTabelasAdmin = function() {
+      var tbAcessos = document.querySelector('#tbAcessos tbody');
+      if(tbAcessos) {
+         tbAcessos.innerHTML = '';
+         window.acessosData.forEach(item => tbAcessos.appendChild(window.criarRowAcesso(item)));
+      }
+      var tbDivisoes = document.querySelector('#tbDivisoes tbody');
+      if(tbDivisoes) {
+         tbDivisoes.innerHTML = '';
+         window.divisoesDataArray.forEach(item => tbDivisoes.appendChild(window.criarRowDivisao(item)));
+      }
+    }
+
+    window.criarRowAcesso = function(item) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = 
+        '<td><input type="text" class="admin-input inp-email" value="' + (item.email || '') + '" readonly></td>' +
+        '<td><input type="text" class="admin-input inp-nivel" value="' + (item.nivel || 'COMUM') + '" placeholder="ADMIN ou COMUM" readonly></td>' +
+        '<td style="display:flex; gap:8px;">' +
+          '<button class="btn-admin btn-admin-edit" onclick="toggleEditRow(this)"><i class="fas fa-pencil-alt"></i></button>' +
+          '<button class="btn-admin btn-admin-del" onclick="this.closest(\'tr\').remove()"><i class="fas fa-trash"></i></button>' +
+        '</td>';
+      return tr;
+    }
+
+    window.criarRowDivisao = function(item) {
+      var neon = item.neon || '#ffffff';
+      var panel = item.panel || '#111111';
+      var text = item.text || '#ffffff';
+      
+      var tr = document.createElement('tr');
+      tr.innerHTML = 
+        '<td><input type="text" class="admin-input inp-nome" value="' + (item.nome || '') + '" readonly></td>' +
+        '<td><input type="text" class="admin-input inp-emblema" value="' + (item.emblema || '') + '" readonly></td>' +
+        '<td><div class="color-picker-wrapper"><input type="color" class="color-picker" value="' + neon + '" disabled oninput="this.nextElementSibling.value=this.value"><input type="text" class="admin-input inp-neon" value="' + neon + '" readonly oninput="if(this.value.length === 7) this.previousElementSibling.value=this.value"></div></td>' +
+        '<td><input type="text" class="admin-input inp-glow" value="' + (item.glow || 'rgba(255,255,255,0.3)') + '" readonly></td>' +
+        '<td><div class="color-picker-wrapper"><input type="color" class="color-picker" value="' + panel + '" disabled oninput="this.nextElementSibling.value=this.value"><input type="text" class="admin-input inp-panel" value="' + panel + '" readonly oninput="if(this.value.length === 7) this.previousElementSibling.value=this.value"></div></td>' +
+        '<td><div class="color-picker-wrapper"><input type="color" class="color-picker" value="' + text + '" disabled oninput="this.nextElementSibling.value=this.value"><input type="text" class="admin-input inp-text" value="' + text + '" readonly oninput="if(this.value.length === 7) this.previousElementSibling.value=this.value"></div></td>' +
+        '<td style="display:flex; gap:8px;"><button class="btn-admin btn-admin-edit" onclick="toggleEditRow(this)"><i class="fas fa-pencil-alt"></i></button><button class="btn-admin btn-admin-del" onclick="this.closest(\'tr\').remove()"><i class="fas fa-trash"></i></button></td>';
+      return tr;
+    }
+
+    window.toggleEditRow = function(btn) {
+      var tr = btn.closest('tr');
+      tr.querySelectorAll('input').forEach(inp => { if(inp.type === 'color') inp.disabled = false; else inp.removeAttribute('readonly'); });
+      btn.innerHTML = '<i class="fas fa-check"></i>';
+      btn.classList.add('btn-admin-check');
+      btn.onclick = function() { window.confirmEditRow(btn); };
+    }
+
+    window.confirmEditRow = function(btn) {
+      var tr = btn.closest('tr');
+      tr.querySelectorAll('input').forEach(inp => { if(inp.type === 'color') inp.disabled = true; else inp.setAttribute('readonly', true); });
+      btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+      btn.classList.remove('btn-admin-check');
+      btn.onclick = function() { window.toggleEditRow(btn); };
+      window.mostrarToastAdmin("Edição confirmada! (Não esqueça de Salvar)");
+    }
+
+    window.mostrarToastAdmin = function(msg) {
+      var container = document.getElementById('toastContainer');
+      var toast = document.createElement('div');
+      toast.className = 'toast-msg';
+      toast.style.animation = 'slide-in-right 0.3s cubic-bezier(0.23, 1, 0.32, 1) forwards, smoke-fade-out 0.5s ease-in forwards 2.5s';
+      toast.innerHTML = '<i class="fas fa-check-circle" style="color: #4caf50; font-size: 20px;"></i><span style="color:#fff;">' + msg + '</span>';
+      container.appendChild(toast);
+      setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
+    }
+
+    window.addLinhaAcesso = function() { var tr = window.criarRowAcesso({}); document.querySelector('#tbAcessos tbody').appendChild(tr); window.toggleEditRow(tr.querySelector('.btn-admin-edit')); }
+    window.addLinhaDivisao = function() { var tr = window.criarRowDivisao({}); document.querySelector('#tbDivisoes tbody').appendChild(tr); window.toggleEditRow(tr.querySelector('.btn-admin-edit')); }
+
+    window.preencherSelect = function() {
+      var select = document.getElementById('divisaoSelect');
+      select.innerHTML = '<option value="" disabled selected>Selecione a Divisão...</option>';
+      for (var div in window.divisoesData) {
+        var opt = document.createElement('option');
+        opt.value = div; opt.innerHTML = div;
+        select.appendChild(opt);
+      }
+    }
+
+    window.dispararNotificacaoFeedback = function(divisao) {
+      var container = document.getElementById('toastContainer');
+      var toast = document.createElement('div');
+      toast.className = 'toast-msg';
+      var badgeUrl = window.divisoesData[divisao] || "https://i.imgur.com/Rh7uF6e.png";
+      toast.innerHTML = '<img src="' + badgeUrl + '" alt="Emblema"><span>Foi registrado um novo feedback na divisão ' + divisao + '!</span>';
+      container.appendChild(toast);
+      setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 7500);
+    }
+
+    window.processarFiltros = function() {
+      if (!window.sistemaPronto || window.viewAtual === 'ADMIN') return;
+      var div = document.getElementById('divisaoSelect').value;
+      var busca = document.getElementById('searchInput').value.toLowerCase().trim();
+      var c = document.getElementById('feedbacksContainer');
+      var b = document.getElementById('badgeBackdrop');
+      var s = document.getElementById('searchBlock');
+
+      if (!div) { s.style.display = 'none'; b.style.display = 'none'; window.resetarTema(); return; }
+      s.style.display = 'flex';
+      
+      document.getElementById('badgeHero').src = window.divisoesData[div];
+      b.src = window.divisoesData[div];
+      
+      var slot = document.getElementById('divisionBadgeSlot');
+      slot.classList.remove('visible'); void slot.offsetWidth; slot.classList.add('visible');
+      b.style.display = 'block';
+
+      window.aplicarTemaDivisao(div);
+
+      var filtrados = window.bancoDeDadosLocal.filter(i => {
+        var resp = i.solicitante ? i.solicitante.toLowerCase() : "";
+        return i.divisao === div && resp.indexOf(busca) !== -1;
+      });
+
+      c.classList.remove('visible'); 
+      setTimeout(function() {
+        if (filtrados.length === 0) c.innerHTML = '<div class="empty-state"><i class="fas fa-search-minus"></i><br>Nenhum registro localizado.</div>';
+        else {
+          c.innerHTML = '';
+          filtrados.forEach(item => c.appendChild(window.criarTechCard(item)));
+        }
+        c.classList.add('visible');
+      }, 50); 
+    }
+
+    window.aplicarTemaDivisao = function(divisao) {
+      const tema = window.divisaoTemasData[divisao];
+      if (!tema) return window.resetarTema();
+      document.documentElement.style.setProperty('--dynamic-neon', tema.neon);
+      document.documentElement.style.setProperty('--dynamic-glow', tema.glow);
+      document.documentElement.style.setProperty('--dynamic-panel', tema.panel);
+      document.documentElement.style.setProperty('--dynamic-select-text', tema.text);
+      document.body.style.backgroundImage = `radial-gradient(circle at center, ${tema.glow.replace('0.3', '0.1')} 0%, transparent 60%), linear-gradient(rgba(255, 42, 42, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 42, 42, 0.03) 1px, transparent 1px)`;
+    }
+
+    window.resetarTema = function() {
+      document.documentElement.style.setProperty('--dynamic-neon', 'var(--wine-neon)');
+      document.documentElement.style.setProperty('--dynamic-glow', 'var(--wine-glow)');
+      document.documentElement.style.setProperty('--dynamic-panel', 'var(--bg-panel)');
+      document.documentElement.style.setProperty('--dynamic-select-text', '#fff');
+      document.body.style.backgroundImage = 'none';
+    }
+
+    window.criarTechCard = function(item) {
+      var card = document.createElement('div');
+      card.className = 'tech-card';
+      var dataFormatada = item.dataHora;
+      try {
+        var d = new Date(item.dataHora);
+        if(!isNaN(d)) dataFormatada = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      } catch(e) {}
+
+      var linkDoc = item.linkDoc || '';
+      card.innerHTML = 
+        '<div class="card-header"><div class="sys-time"><i class="far fa-clock"></i> Registro: ' + dataFormatada + '</div></div>' +
+        '<div class="subject-flow">' +
+          window.gerarSubject('Responsável', item.responsavel) + '<i class="fas fa-angle-double-right flow-divider"></i>' +
+          window.gerarSubject('Solicitante', item.solicitante) + '<i class="fas fa-angle-double-right flow-divider"></i>' +
+          window.gerarSubject('Membro Avaliado', item.membro) +
+        '</div>' +
+        '<button class="btn-tech" onclick="abrirDoc(\'' + linkDoc + '\')"><i class="fas fa-eye"></i> Visualizar Feedback</button>';
+      return card;
+    }
+
+    window.gerarSubject = function(cargo, nick) {
+      if (!nick) nick = "N/A";
+      var limpo = nick.trim();
+      var img = "https://www.habbo.com.br/habbo-imaging/avatarimage?user=" + limpo + "&action=std&direction=2&head_direction=2&gesture=sml&size=b";
+      var url = "https://dic.systemhb.net/busca?q=" + limpo;
+      var fallback = "https://www.habbo.com.br/habbo-imaging/avatarimage?user=Mistery&action=std&direction=2&head_direction=2&gesture=sml&size=b";
+      return '<div class="subject"><span class="subject-role">' + cargo + '</span><div class="subject-img-ring"><div class="subject-img-inner"><img src="' + img + '" onerror="this.src=\'' + fallback + '\'"></div></div><a href="' + url + '" target="_blank" class="subject-nick">' + limpo + '</a></div>';
+    }
+
+    window.abrirDoc = function(url) {
+      if (!url || url === 'undefined') return alert("Link não encontrado.");
+      if (url.indexOf('docs.google.com/document/d/') !== -1) url = url.replace(/\/edit.*$/, '/preview');
+      document.getElementById('docIframe').src = url;
+      document.getElementById('docModal').style.display = 'flex';
+    }
+
+    window.fecharModal = function() {
+      document.getElementById('docModal').style.display = 'none';
+      document.getElementById('docIframe').src = "";
+    }
+  </script>
+</body>
+</html>
